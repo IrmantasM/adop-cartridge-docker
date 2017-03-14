@@ -24,6 +24,7 @@ dockerci.with {
         preBuildCleanup()
         injectPasswords()
         maskPasswords()
+        nodejs('ADOP NodeJS')
         sshAgent("adop-jenkins-master")
         credentialsBinding {
             usernamePassword("DOCKERHUB_USERNAME", "DOCKERHUB_PASSWORD", '${DOCKER_LOGIN}')
@@ -59,12 +60,12 @@ dockerci.with {
             |echo "Pull the Dockerfile out of Git, ready for us to test and if successful, release via the pipeline."
             |
             |# Convert tag name to lowercase letters if any uppercase letters are present since they are not allowed by Docker
-            |echo TAG=$(echo "$IMAGE_TAG" | awk '{print tolower($0)}') > build.properties'''.stripMargin())
-        shell('''echo "Mount the Dockerfile into a container that will run Dockerlint: https://github.com/RedCoolBeans/dockerlint"
-            |curl -sL https://deb.nodesource.com/setup_7.x | bash -
-            |apt-get install -y nodejs
-            |npm install npm@latest -g
-            |npm install -g dockerlint
+            |echo TAG=$(echo "$IMAGE_TAG" | awk '{print tolower($0)}')'''.stripMargin())
+
+        shell('''echo "Run dockerlint test on Dockerfile: https://github.com/RedCoolBeans/dockerlint"
+            |# Add your local node_modules bin to the path for this command
+            |export PATH="./node_modules/.bin:$PATH"
+            |npm install
             |
             |dockerlint "${WORKSPACE}/Dockerfile" > "${WORKSPACE}/${JOB_NAME##*/}.out"
             |
@@ -75,10 +76,10 @@ dockerci.with {
             |else
             | cat ${WORKSPACE}/${JOB_NAME##*/}.out
             |fi'''.stripMargin())
+
         shell('''echo "Building the docker image locally..."
-            |docker build -t ${DOCKERHUB_USERNAME}/${IMAGE_TAG}:${B} ${WORKSPACE}/.
-            |
-            |echo LOGIN=$(echo ${DOCKER_LOGIN}) > credential.properties'''.stripMargin())
+            |docker build -t ${DOCKERHUB_USERNAME}/${IMAGE_TAG}:${BUILD_NUMBER} ${WORKSPACE}/.'''.stripMargin())
+
         shell('''echo "THIS STEP NEEDS TO BE UPDATED ONCE ACCESS TO A PRODUCTION CLAIR DATABASE IS AVAILABLE"
             |
             |if [ -z ${CLAIR_DB} ]; then
@@ -93,11 +94,9 @@ dockerci.with {
             | docker run -d -p 6060-6061:6060-6061 -v /tmp/clair_config:/config quay.io/coreos/clair -config=/config/config.yaml
             | # INSERT STEPS HERE TO RUN VULNERABILITY ANALYSIS ON IMAGE USING CLAIR API
             |fi'''.stripMargin())
+
         shell('''echo "DOCKER PUSH"
             |docker login -u ${DOCKERHUB_USERNAME} -p ${DOCKERHUB_PASSWORD} -e devops@adop.com
-            |docker push ${DOCKERHUB_USERNAME}/${IMAGE_TAG}:${B}'''.stripMargin())
-        environmentVariables {
-            propertiesFile('build.properties')
-        }
+            |docker push ${DOCKERHUB_USERNAME}/${IMAGE_TAG}:${BUILD_NUMBER}'''.stripMargin())
     }
 }
