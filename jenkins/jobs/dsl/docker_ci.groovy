@@ -30,7 +30,6 @@ dockerci.with {
         preBuildCleanup()
         injectPasswords()
         maskPasswords()
-        nodejs('ADOP NodeJS')
         sshAgent("adop-jenkins-master")
         credentialsBinding {
             usernamePassword("DOCKERHUB_USERNAME", "DOCKERHUB_PASSWORD", '${DOCKER_LOGIN}')
@@ -51,11 +50,27 @@ dockerci.with {
             |echo TAG=$(echo "$IMAGE_TAG" | awk '{print tolower($0)}')'''.stripMargin())
 
         shell('''echo "Run dockerlint test on Dockerfile: https://github.com/RedCoolBeans/dockerlint"
-            |# Add your local node_modules bin to the path for this command
-            |export PATH="./node_modules/.bin:$PATH"
-            |npm install
+            |# Docker test wrapper image Dockerfile definition
+            |mkdir -p tmp
+            |rm -rf tmp/Dockerfile
+            |echo 'FROM redcoolbeans/dockerlint:0.2.0 \\n' \\
+            |'ADD Dockerfile /Dockerfile \\n' \\
+            |'ENTRYPOINT ["dockerlint"]' \\
+            |>> tmp/Dockerfile
             |
-            |dockerlint "${WORKSPACE}/Dockerfile" > "${WORKSPACE}/${JOB_NAME##*/}.out"
+            |# Remove Debris If Any
+            |if [[ "$(docker images -q docker-test 2> /dev/null)" == "" ]]; then
+            |  docker rmi -f "docker-test"
+            |fi
+            |
+            |# Create test wrapper image: dockerlint as a base, add Dockerfile on top
+            |docker build -t "docker-test" ${WORKSPACE}/tmp
+            |
+            |#Do Linting
+            |docker run --rm "docker-test" > "${WORKSPACE}/${JOB_NAME##*/}.out"
+            |
+            |# Clean-up
+            |docker rmi -f "docker-test"
             |
             |if ! grep "Dockerfile is OK" ${WORKSPACE}/${JOB_NAME##*/}.out ; then
             | echo "Dockerfile does not satisfy Dockerlint static code analysis"
@@ -68,7 +83,8 @@ dockerci.with {
         shell('''echo "Building the docker image locally..."
             |docker build -t ${IMAGE_TAG} ${WORKSPACE}/.'''.stripMargin())
 
-        shell('''echo "THIS STEP NEEDS TO BE UPDATED ONCE ACCESS TO A PRODUCTION CLAIR DATABASE IS AVAILABLE"
+        shell('''echo "[INFO] TEST: Clair Testing Step"
+            |echo "THIS STEP NEEDS TO BE UPDATED ONCE ACCESS TO A PRODUCTION CLAIR DATABASE IS AVAILABLE"
             |
             |if [ -z ${CLAIR_DB} ]; then
             | echo "WARNING: You have not provided the endpoints for a Clair database, moving on for now..."
@@ -83,7 +99,9 @@ dockerci.with {
             | # INSERT STEPS HERE TO RUN VULNERABILITY ANALYSIS ON IMAGE USING CLAIR API
             |fi'''.stripMargin())
 
-        shell('''echo "DOCKER PUSH"
+        shell('''echo "[INFO] TEST: BDD Testing Step"'''.stripMargin())
+
+        shell('''echo "Pushing docker image to container registry"
             |if [[ ${IMAGE_TAG} == *"amazonaws.com"* ]]; then
             | export AWS_ACCESS_KEY_ID=${DOCKERHUB_USERNAME}
             | export AWS_SECRET_ACCESS_KEY=${DOCKERHUB_PASSWORD}
