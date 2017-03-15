@@ -50,6 +50,7 @@ dockerci.with {
             |echo TAG=$(echo "$IMAGE_TAG" | awk '{print tolower($0)}')'''.stripMargin())
 
         shell('''echo "Run dockerlint test on Dockerfile: https://github.com/RedCoolBeans/dockerlint"
+            |MASTER_NAME=$(echo ${JENKINS_URL} | awk -F/ '{print $3}')
             |# Docker test wrapper image Dockerfile definition
             |mkdir -p tmp
             |rm -rf tmp/Dockerfile
@@ -66,7 +67,7 @@ dockerci.with {
             |# Create test wrapper image: dockerlint as a base, add Dockerfile on top
             |docker build -t "${MASTER_NAME}" ${WORKSPACE}/tmp
             |
-            |#Do Linting
+            |# Run Linting
             |docker run --rm "${MASTER_NAME}" > "${WORKSPACE}/${JOB_NAME##*/}.out"
             |
             |# Clean-up
@@ -100,6 +101,7 @@ dockerci.with {
             |fi'''.stripMargin())
 
         shell('''echo "[INFO] TEST: BDD Testing Step"
+            |MASTER_NAME=$(echo ${JENKINS_URL} | awk -F/ '{print $3}')
             |# Docker Test Wrapper Image
             |mkdir -p tmp
             |rm -rf tmp/Dockerfile
@@ -116,7 +118,7 @@ dockerci.with {
             |# Create test wrapper image: security test as a base, add Dockerfile on top
             |docker build -t "${MASTER_NAME}" ${WORKSPACE}/tmp
             |
-            |# Do Security Test
+            |# Run Security Test
             |docker run --rm -v "/var/run/docker.sock:/var/run/docker.sock" "${MASTER_NAME}" > "${WORKSPACE}/cucumber.out"
             |
             |# Clean-up
