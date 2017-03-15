@@ -59,18 +59,18 @@ dockerci.with {
             |>> tmp/Dockerfile
             |
             |# Remove Debris If Any
-            |if [[ "$(docker images -q docker-test 2> /dev/null)" == "" ]]; then
-            |  docker rmi -f "docker-test"
+            |if [[ "$(docker images -q ${MASTER_NAME} 2> /dev/null)" == "" ]]; then
+            |  docker rmi -f "${MASTER_NAME}"
             |fi
             |
             |# Create test wrapper image: dockerlint as a base, add Dockerfile on top
-            |docker build -t "docker-test" ${WORKSPACE}/tmp
+            |docker build -t "${MASTER_NAME}" ${WORKSPACE}/tmp
             |
             |#Do Linting
-            |docker run --rm "docker-test" > "${WORKSPACE}/${JOB_NAME##*/}.out"
+            |docker run --rm "${MASTER_NAME}" > "${WORKSPACE}/${JOB_NAME##*/}.out"
             |
             |# Clean-up
-            |docker rmi -f "docker-test"
+            |docker rmi -f "${MASTER_NAME}"
             |
             |if ! grep "Dockerfile is OK" ${WORKSPACE}/${JOB_NAME##*/}.out ; then
             | echo "Dockerfile does not satisfy Dockerlint static code analysis"
@@ -99,7 +99,29 @@ dockerci.with {
             | # INSERT STEPS HERE TO RUN VULNERABILITY ANALYSIS ON IMAGE USING CLAIR API
             |fi'''.stripMargin())
 
-        shell('''echo "[INFO] TEST: BDD Testing Step"'''.stripMargin())
+        shell('''echo "[INFO] TEST: BDD Testing Step"
+            |# Docker Test Wrapper Image
+            |mkdir -p tmp
+            |rm -rf tmp/Dockerfile
+            |echo 'FROM luismsousa/docker-security-test \\n' \\
+            |'ADD Dockerfile /dockerdir/Dockerfile \\n' \\
+            |'ENTRYPOINT ["rake"]' \\
+            |>> tmp/Dockerfile
+            |
+            |# Remove Debris If Any
+            |if [[ "$(docker images -q ${MASTER_NAME} 2> /dev/null)" == "" ]]; then
+            |  docker rmi -f "${MASTER_NAME}"
+            |fi
+            |
+            |# Create test wrapper image: security test as a base, add Dockerfile on top
+            |docker build -t "${MASTER_NAME}" ${WORKSPACE}/tmp
+            |
+            |# Do Security Test
+            |docker run --rm -v "/var/run/docker.sock:/var/run/docker.sock" "${MASTER_NAME}" > "${WORKSPACE}/cucumber.out"
+            |
+            |# Clean-up
+            |docker rmi -f "${MASTER_NAME}"
+            |'''.stripMargin())
 
         shell('''echo "Pushing docker image to container registry"
             |if [[ ${IMAGE_TAG} == *"amazonaws.com"* ]]; then
